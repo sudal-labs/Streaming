@@ -1,0 +1,27 @@
+### IDE ###
+.idea/
+.vscode/
+*.iml
+
+### 가상 환경 ###
+.venv/
+venv/
+
+### 환경변수 ###
+.env
+
+### Local DB ###
+*.db
+
+### 업로드/변환된 영상 파일 ###
+storage/
+
+### Python 캐시 ###
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+### Mac OS ###
+.DS_Store
+
