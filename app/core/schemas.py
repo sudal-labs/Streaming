@@ -13,9 +13,12 @@ class VideoUploadResponse(BaseModel):
 class VideoStatusResponse(BaseModel):
     video_id: str
     status: VideoStatus
-    progress: int | None = None
     duration: int | None = None
     error: str | None = None
+
+class VideoStreamResponse(BaseModel):
+    video_id: str
+    playlist_url: str # presigned URL
 
 class VideoListItem(BaseModel):
     video_id: str
