@@ -1,10 +1,9 @@
+import asyncio
 import uuid
 from pathlib import Path
 
-import aiofiles
-from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Form, Request
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.params import Depends
-from fastapi.responses import FileResponse, Response
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,10 +12,11 @@ from app.core.schemas import (
     VideoUploadResponse,
     VideoStatusResponse,
     VideoListItem,
-    VideoListResponse,
+    VideoListResponse, VideoStreamResponse,
 )
 from app.db.models import Video, VideoStatus, get_db
-from app.services.transcoding import transcode_to_hls
+from app.services.kafka import publish_transcode_event
+from app.services.storage import upload_fileobj, get_presigned_url
 
 router = APIRouter(
     prefix="/videos",
@@ -34,60 +34,74 @@ def _validate_extension(filename: str) -> str:
 
 @router.post("", status_code=202, response_model=VideoUploadResponse)
 async def upload_video(
-        background_tasks: BackgroundTasks,
         file: UploadFile = File(...),
         title: str = Form(...),
         description: str = Form(None),
         db: AsyncSession = Depends(get_db),
 ):
-    """영상 업로드 → 즉시 202 반환 → 백그라운드 트랜스코딩 시작"""
+    """
+    영상 업로드
+    1. MinIO에 원본 저장
+    2. DB 저장
+    3. Kafka에 트랜스코딩 이벤트 발행
+    4. 202 즉시 반환
+    """
     _validate_extension(file.filename or "")
 
     video_id = str(uuid.uuid4())
     ext = Path(file.filename or "video").suffix
-    save_path = Path(settings.UPLOAD_DIR) / f"{video_id}{ext}"
+    object_key = f"originals/{video_id}{ext}"
 
-    # 파일 저장 (스트리밍으로 읽어 디스크에 기록)
+    # 파일 읽기 (크기 검증 포함)
+    chunks = []
     file_size = 0
-    async with aiofiles.open(save_path, "wb") as f:
-        while chunk := await file.read(1024 * 1024): # 1MB 청크
-            if file_size + len(chunk) > settings.max_file_size_bytes:
-                save_path.unlink(missing_ok=True)
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"파일 크기가 {settings.MAX_FILE_SIZE_MB}MB를 초과합니다.",
-                )
-            await f.write(chunk)
-            file_size += len(chunk)
+    while chunk := await file.read(1024 * 1024):
+        file_size += len(chunk)
+        if file_size > settings.max_file_size_bytes:
+            raise HTTPException(
+                status_code=400,
+                detail=f"파일 크기가 {settings.MAX_FILE_SIZE_MB}MB를 초과합니다.",
+            )
+        chunks.append(chunk)
+    data = b"".join(chunks)
 
-    # DB 저장
+    # -- 1. MinIO 업로드 (블로킹 작업 -> executor로 비동기 처리)
+    await asyncio.get_event_loop().run_in_executor(
+        None, upload_fileobj, object_key, data, "video/mp4"
+    )
+
+    # -- 2. DB 저장
     video = Video(
         id=video_id,
         title=title,
         description=description,
-        original_path=str(save_path),
+        original_object_key=object_key,
         file_size=file_size,
         status=VideoStatus.PENDING,
     )
     db.add(video)
     await db.commit()
 
-    # 백그라운드 트랜스코딩 등록
-    background_tasks.add_task(transcode_to_hls, video_id, str(save_path))
+    # -- 3. Kafka 이벤트 발행
+    await publish_transcode_event(video_id, object_key)
 
     return VideoUploadResponse(video_id=video_id, status=VideoStatus.PENDING, title=title)
 
+
 @router.get("/{video_id}/status", response_model=VideoStatusResponse)
-async def get_video_status(video_id: str, db: AsyncSession = Depends(get_db)):
-    """트랜스코딩 진행 상태 조회"""
-    result = await  db.execute(
+async def get_video_status(
+        video_id: str,
+        db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
         select(Video)
         .where(Video.id == video_id)
     )
     video = result.scalar_one_or_none()
+
     if not video:
         raise HTTPException(
-            status_code=404,
+            status_code=400,
             detail="영상을 찾을 수 없습니다."
         )
 
@@ -98,9 +112,16 @@ async def get_video_status(video_id: str, db: AsyncSession = Depends(get_db)):
         error=video.error_message,
     )
 
-@router.get("/{video_id}/stream")
-async def stream_video(video_id: str, request: Request, db: AsyncSession = Depends(get_db)):
-    """HLS 플레이리스트(.m3u8) 반환"""
+
+@router.get("/{video_id}/stream", response_model=VideoStreamResponse)
+async def stream_video(
+        video_id: str,
+        db: AsyncSession = Depends(get_db)
+):
+    """
+    HLS 플레이리스트 Presigned URL 반환
+    클라이언트가 MinIO에 직접 접근 → API 서버 부하 없음
+    """
     result = await db.execute(
         select(Video)
         .where(Video.id == video_id)
@@ -111,31 +132,19 @@ async def stream_video(video_id: str, request: Request, db: AsyncSession = Depen
     if video.status != VideoStatus.DONE:
         raise HTTPException(status_code=400, detail=f"아직 스트리밍 불가 상태입니다. 현재: {video.status}")
 
-    playlist_path = Path(video.hls_path)
-    if not playlist_path.exists():
-        raise HTTPException(status_code=404, detail="플레이리스트 파일이 없습니다.")
-
-    base_url = f"{request.base_url}videos/{video_id}/segments"
-    content = playlist_path.read_text()
-    content = content.replace("segment_", f"{base_url}/segment_")
-
-    return Response(
-        content=content,
-        media_type="application/x-mpegURL",
+    playlist_key = f"{video.hls_object_prefix}/playlist.m3u8"
+    presigned_url = await asyncio.get_event_loop().run_in_executor(
+        None,
+        get_presigned_url,
+        playlist_key,
+        3600
     )
 
-@router.get("/{vide_id}/segments/{filename}")
-async def serve_segment(video_id: str, filename: str):
-    """HLS 세그먼트(.ts) 파일 서빙"""
-    # 경로 순회 공격 방지
-    if ".." in filename or "/" in filename:
-        raise HTTPException(status_code=400, detail="잘못된 파일명입니다.")
+    return VideoStreamResponse(
+        video_id=video_id,
+        playlist_url=presigned_url,
+    )
 
-    segment_path = Path(settings.HLS_DIR) / video_id / filename
-    if not segment_path.exists():
-        raise HTTPException(status_code=404, detail="세그먼트 파일이 없습니다.")
-
-    return FileResponse(path=str(segment_path), media_type="video/mp2t")
 
 @router.get("", response_model=VideoListResponse)
 async def list_videos(
@@ -171,4 +180,7 @@ async def list_videos(
         for v in videos
     ]
 
-    return VideoListResponse(total=total, items=items)
+    return VideoListResponse(
+        total=total,
+        items=items
+    )
