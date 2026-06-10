@@ -5,3 +5,7 @@ sqlalchemy==2.0.36
 aiosqlite==0.20.0
 python-dotenv==1.0.1
 aiofiles==23.2.1
+
+# 2단계 미들웨어 추가
+aiokafka==0.11.0 # Kafka 비동기 클라이언트
+minio==7.2.7 # MinIO 클라이언트
