@@ -45,25 +45,39 @@ GET /videos/{id}/stream
 ## 실행 방법
 
 ```bash
-# 1. 미들웨어 실행 (Kafka + MinIO)
-cd podman
-podman compose up -d
+# 1. 환경변수 설정
+cp .env.example .env
+# .env에서 FFMPEG_PATH 로컬 경로로 수정 (Mac: /opt/homebrew/bin/ffmpeg)
 
 # 2. 패키지 설치
 pip install -r requirements.txt
 
 # 3. FFmpeg 설치
 brew install ffmpeg  # macOS
+# sudo apt install ffmpeg  # Ubuntu
 
-# 4. 환경변수 설정
-cp .env.example .env
-# .env에서 FFMPEG_PATH 로컬 경로로 수정
+# 4. 미들웨어 실행 (Kafka + MinIO)
+chmod +x middleware.sh
+./middleware.sh up
 
 # 5. API 서버 실행
 uvicorn app.main:app --reload
 
 # 6. Worker 실행 (별도 터미널)
 python -m app.worker.consumer
+```
+
+## 미들웨어 명령어
+
+```bash
+./middleware.sh up               # 시작
+./middleware.sh down             # 종료
+./middleware.sh restart          # 재시작
+./middleware.sh status           # 상태 확인
+./middleware.sh logs             # 전체 로그
+./middleware.sh logs kafka       # Kafka 로그만
+./middleware.sh logs minio       # MinIO 로그만
+./middleware.sh clean            # 볼륨 포함 전체 삭제 (데이터 초기화)
 ```
 
 ## MinIO 콘솔
