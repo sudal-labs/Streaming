@@ -23,8 +23,10 @@ class Video(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    original_path: Mapped[str] = mapped_column(String(500))
-    hls_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    original_object_key: Mapped[str] = mapped_column(String(500))
+    hls_object_prefix: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     status: Mapped[str] = mapped_column(
         Enum(VideoStatus), default=VideoStatus.PENDING
     )
