@@ -4,9 +4,9 @@ from minio import Minio
 
 from app.config import settings
 
-_client: Minio
+_client: Minio | None = None
 
-def get_minio_client() -> Minio:
+def get_minio_client() -> Minio | None:
     global _client
     if _client is None:
         _client = Minio(

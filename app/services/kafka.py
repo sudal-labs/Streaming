@@ -7,9 +7,9 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-_producer: AIOKafkaProducer
+_producer: AIOKafkaProducer | None = None
 
-async def get_producer() -> AIOKafkaProducer:
+async def get_producer() -> AIOKafkaProducer | None:
     global _producer
     if _producer is None:
         _producer = AIOKafkaProducer(
@@ -23,6 +23,7 @@ async def stop_producer():
     global _producer
     if _producer:
         await _producer.stop()
+        _producer = None
 
 async def publish_transcode_event(
         video_id: str,
