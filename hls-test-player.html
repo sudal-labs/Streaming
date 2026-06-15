@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>HLS 테스트 플레이어</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.7/hls.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #111;
+      color: #eee;
+      font-family: -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 20px;
+      padding: 24px;
+    }
+    h2 { font-size: 18px; color: #aaa; }
+    .card {
+      background: #1e1e1e;
+      border-radius: 12px;
+      padding: 24px;
+      width: 100%;
+      max-width: 720px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    input {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid #333;
+      background: #2a2a2a;
+      color: #eee;
+      font-size: 13px;
+    }
+    button {
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: none;
+      background: #4f8ef7;
+      color: white;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    button:hover { background: #3a7ae0; }
+    video {
+      width: 100%;
+      border-radius: 8px;
+      background: #000;
+      max-height: 400px;
+    }
+    #status {
+      font-size: 12px;
+      color: #888;
+      min-height: 18px;
+    }
+    #status.error { color: #f87171; }
+    #status.ok { color: #4ade80; }
+  </style>
+</head>
+<body>
+  <h2>HLS 테스트 플레이어</h2>
+  <div class="card">
+    <input id="urlInput" type="text" placeholder="Presigned URL (playlist.m3u8) 붙여넣기" />
+    <button onclick="loadStream()">재생</button>
+    <video id="video" controls></video>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    let hls = null;
+
+    function loadStream() {
+      const url = document.getElementById('urlInput').value.trim();
+      const video = document.getElementById('video');
+      const status = document.getElementById('status');
+
+      if (!url) {
+        setStatus('URL을 입력해주세요.', 'error');
+        return;
+      }
+
+      if (hls) {
+        hls.destroy();
+        hls = null;
+      }
+
+      if (Hls.isSupported()) {
+        hls = new Hls();
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          setStatus('✅ 스트림 로드 성공! 재생 중...', 'ok');
+          video.play();
+        });
+        hls.on(Hls.Events.ERROR, (event, data) => {
+          if (data.fatal) {
+            setStatus(`❌ 오류: ${data.type} - ${data.details}`, 'error');
+          }
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Safari 네이티브 HLS
+        video.src = url;
+        video.play();
+        setStatus('✅ Safari 네이티브 HLS 재생 중...', 'ok');
+      } else {
+        setStatus('❌ 이 브라우저는 HLS를 지원하지 않습니다.', 'error');
+      }
+    }
+
+    function setStatus(msg, type) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = type || '';
+    }
+
+    // 엔터키로도 재생
+    document.getElementById('urlInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') loadStream();
+    });
+  </script>
+</body>
+</html>
