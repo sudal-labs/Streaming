@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # DB
-    DATABASE_URL: str = "sqlite+aiosqlite:///./video_streaming.db"
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/video_streaming"
 
     # FFmpeg
     FFMPEG_PATH: str = "ffmpeg"

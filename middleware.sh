@@ -7,6 +7,7 @@ case "$1" in
     echo "▶ 전체 서비스 시작 (빌드 포함)..."
     podman compose -f "$COMPOSE_FILE" up -d
     echo ""
+    echo "PostgreSQL → localhost:5432 (postgres / postgres)"
     echo "MinIO 콘솔  → http://localhost:9001  (minioadmin / minioadmin)"
     echo "Kafka      → localhost:9092"
 #    echo "Redis      → localhost:6379"

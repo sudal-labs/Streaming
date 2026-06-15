@@ -2,6 +2,24 @@ version: "3.9"
 
 services:
 
+  # -- PostgreSQL
+  postgres:
+    image: docker.io/postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: video_streaming
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # -- MinIO
   minio:
     image: quay.io/minio/minio:latest
@@ -72,19 +90,21 @@ services:
   api:
     build:
       context: ..
-      dockerfile: Dockerfile.worker.api.api.api
+      dockerfile: Dockerfile.api
     container_name: api
     ports:
       - "8000:8000"
     env_file:
       - ../.env.container
     depends_on:
+      postgres:
+        condition: service_healthy
       kafka:
         condition: service_healthy
       minio:
         condition: service_healthy
-      redis:
-        condition: service_healthy
+#      redis:
+#        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -95,7 +115,7 @@ services:
   worker:
     build:
       context: ..
-      dockerfile: Dockerfile.worker.api.api.worker
+      dockerfile: Dockerfile.worker
     container_name: worker
     ports:
       - "8001:8001"
@@ -138,6 +158,7 @@ services:
 #      - prometheus
 
 volumes:
+  postgres_data:
   minio_data:
   zookeeper_data:
   kafka_data:

@@ -2,7 +2,8 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum as PyEnum
 
-from sqlalchemy import String, Text, Enum, Integer, BigInteger, DateTime, func
+import fastapi
+from sqlalchemy import String, Text, Enum, Integer, BigInteger, DateTime, func, Uuid
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -20,7 +21,7 @@ class Base(DeclarativeBase):
 class Video(Base):
     __tablename__ = "videos"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
