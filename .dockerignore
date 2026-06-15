@@ -1,0 +1,13 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.db
+.env
+.git/
+.gitignore
+.DS_Store
+podman/
+*.md

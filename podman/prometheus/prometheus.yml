@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # API 서버 (컨테이너 서비스명으로 접근)
+  - job_name: "api-server"
+    static_configs:
+      - targets: ["api:8000"]
+    metrics_path: /metrics
+
+  # Worker
+  - job_name: "worker"
+    static_configs:
+      - targets: ["worker:8001"]
+    metrics_path: /metrics
